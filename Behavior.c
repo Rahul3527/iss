@@ -3,9 +3,19 @@
 
 int32_t srf[32];
 
-void SetSrf(int32_t reg, int32_t value)
+int32_t *getSrfPtr()
+{
+  return srf;
+}
+
+void setSrf(int32_t reg, int32_t value)
 {
   srf[reg] = value;
+}
+
+int32_t getSrf(int32_t reg)
+{
+  return srf[reg];
 }
 
 void add32(int32_t d0, int32_t s0, int32_t s1)
