@@ -24,6 +24,8 @@ void add32(int32_t d0, int32_t s0, int32_t s1)
   srf[s1] = 20;
   srf[d0] = srf[s0] + srf[s1];
   printf("srf[%d] = %d\n", d0, srf[d0]);
+  printf("srf[%d] = %d\n", s0, srf[s0]);
+  printf("srf[%d] = %d\n", s1, srf[s1]);
 }
 
 void sub32(int32_t d0, int32_t s0, int32_t s1)

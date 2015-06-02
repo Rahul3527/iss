@@ -4,6 +4,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/Attributes.h>
 #include <llvm/Support/SourceMgr.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
@@ -13,7 +14,10 @@
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/ExecutionEngine/GenericValue.h>
 #include <llvm/IRReader/IRReader.h>
-
+#include <llvm/PassManager.h>
+#include <llvm/IR/DataLayout.h>
+#include <llvm/Transforms/IPO.h>
+#include <llvm/Transforms/Scalar.h>
 #include <fstream>
 #include <iostream>
 
@@ -37,15 +41,30 @@ llvm::Module *load_module(string fileName, llvm::LLVMContext &Context)
   } // end if
   else {
     MyModule->dump();
+    ExecutionEngine* EE = EngineBuilder(std::move(M)).create();
+    EE->DisableLazyCompilation(true);
 
+    llvm::PassManager *pm = new PassManager();
+    pm->add(createAlwaysInlinerPass());
+    llvm::FunctionPassManager *fpm = new FunctionPassManager(MyModule);
+    //fpm->add(new DataLayout(MyModule));
+    //fpm->add(new DataLayout(*EE->getDataLayout()));
+    fpm->add(createGVNPass());
+    fpm->add(createInstructionCombiningPass());
+    fpm->add(createCFGSimplificationPass());
+    fpm->add(createDeadStoreEliminationPass());
+
+
+/*
     // Create some module to put our function into it.
     std::unique_ptr<Module> Owner = make_unique<Module>("test", context);
     Module *NewModule = Owner.get();
+*/
     // Create the Try1 function entry and insert this entry into module M.  The
     // function will have a return type of "void" and take an argument of "void".
     // The '0' terminates the list of argument types.
     Function *Try1 =
-      cast<Function>(NewModule->getOrInsertFunction("Try1", Type::getVoidTy(context),
+      cast<Function>(MyModule->getOrInsertFunction("Try1", Type::getVoidTy(context),
                                             (Type *)0));
 
     // Add a basic block to the function. As before, it automatically inserts
@@ -65,29 +84,40 @@ llvm::Module *load_module(string fileName, llvm::LLVMContext &Context)
     Value *Three = builder.getInt32(3);
 
     Function *add32 = MyModule->getFunction("add32");
+    add32->addFnAttr(Attribute::AlwaysInline);
     Function *sub32 = MyModule->getFunction("sub32");
     Function *mul32 = MyModule->getFunction("mul32");
+/*
     Function::Create(add32->getFunctionType(), Function::ExternalLinkage, add32->getName(), NewModule); 
     Function::Create(sub32->getFunctionType(), Function::ExternalLinkage, sub32->getName(), NewModule); 
     Function::Create(mul32->getFunctionType(), Function::ExternalLinkage, mul32->getName(), NewModule); 
 
-    Value *add1ops[] = {One, Two, Three};
     Value *add2ops[] = {Two, Two, Zero};
     Value *sub1ops[] = {Two, Two, One};
     Value *mul1ops[] = {Two, Three, One};
     CallInst *Add1CallRes = builder.CreateCall(add32, add1ops);
     CallInst *Add2CallRes = builder.CreateCall(add32, add2ops);
+*/
+    Value *add1ops[] = {One, Two, Three};
+    ArrayRef <Value *> ref(add1ops, 3);
+    builder.CreateCall(add32, ref);
     builder.CreateRetVoid();  
+    pm->run(*MyModule);
+    fpm->run(*Try1);
+    EE->finalizeObject();
     // Now we create the JIT.
-    ExecutionEngine* EE = EngineBuilder(std::move(Owner)).create();
-
-    outs() << "We just constructed this LLVM module:\n\n" << *NewModule;
-    outs() << "\n\nRunning Try: ";
+    //EE->addGlobalMapping(add32, (void *)&::add32);
+    //EE->addGlobalMapping(add32, (void *)&add32);
+    outs() << "We just constructed this LLVM module:\n\n" << *MyModule;
+    outs() << "\n\nRunning Try: \n\n";
     outs().flush();
-
     // Call the `Try' function with no arguments:
-    std::vector<GenericValue> noargs;
-    GenericValue gv =  EE->runFunction(Try1, noargs);
+    //std::vector<GenericValue> noargs;
+    //GenericValue gv =  EE->runFunction(Try1, noargs);
+    
+    void (*try1)() = 
+      reinterpret_cast<void (*)()>(EE->getPointerToFunction(Try1));
+    try1(); 
     delete EE;
   }
   return NULL;
