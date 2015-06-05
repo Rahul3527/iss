@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
-// clang -S -c Behavior.c -o Behavior.bc
+// clang -emit-llvm- -c Behavior.c -o Behavior.bc
 
 int32_t srf[32];
 
@@ -19,6 +19,10 @@ int32_t getSrf(int32_t reg)
   return srf[reg];
 }
 
+void nop(int32_t d0, int32_t s0, int32_t s1)
+{
+  srf[d0] = srf[s0] + srf[s1];
+}
 void add32(int32_t d0, int32_t s0, int32_t s1)
 {
   //srf[s0] = 10;
@@ -121,11 +125,6 @@ void xchg32(int32_t d0, int32_t s0, int32_t s1)
   srf[s1] = tmp;
 }
 
-void mul32(int32_t d0, int32_t s0, int32_t s1)
-{
-  srf[d0] = srf[s0] * srf[s1];
-}
-
 void div32(int32_t d0, int32_t s0, int32_t s1)
 {
   srf[d0] = srf[s0] / srf[s1];
@@ -136,7 +135,7 @@ void rem32(int32_t d0, int32_t s0, int32_t s1)
   srf[d0] = srf[s0] % srf[s1];
 }
 
-void rshift32(int32_t d0, int32_t s0, int32_t s1)
+void jmp(int32_t d0, int32_t s0, int32_t s1)
 {
   srf[d0] = srf[s0] >> srf[s1];
 }

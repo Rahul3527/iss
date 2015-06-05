@@ -1,10 +1,10 @@
 // main.cpp
 // build with:
-//g++ AppGenerator.cpp -std=c++11
+//g++ AppGenerator.cpp -std=c++11 -o appgen
 #include <random>
 #include <fstream>
 #include <iostream>
-#include "Instruction.h"
+#include "Inst.h"
 
 using namespace std;
 
@@ -42,27 +42,25 @@ void AppGenerator::generate(int32_t block_size, int32_t num_blocks)
     std::random_device rd;
     std::mt19937 mt(rd());
     std::uniform_real_distribution<double> dist(1, OPCODE::JMP+1);
-    for (int j = 0; j < block_size; j++) {
+    for (int j = 0; j < block_size-1; j++) {
       op = (OPCODE)((int32_t)dist(mt) - 1);
       dst_reg = (int32_t)(dist(mt)) % 16;
       src0_reg = (int32_t)(dist(mt)) % 16;
       src1_reg = (int32_t)(dist(mt)) % 16;
-      Instruction inst(op, dst_reg, src0_reg, src1_reg); 
-      outfile.write((char*)(&inst), sizeof(Instruction));
+      CInst inst(op, dst_reg, src0_reg, src1_reg); 
+      outfile.write((char*)(&inst), sizeof(CInst));
     }
-    if (i % 30 == 0) {
-      src0_reg = i - 10; 
-      Instruction inst(OPCODE::JMP, 0, src0_reg, 0); 
-      outfile.write((char*)(&inst), sizeof(Instruction));
-    }
+    src0_reg = i - 10; 
+    CInst inst(OPCODE::JMP, 0, src0_reg, 0); 
+    outfile.write((char*)(&inst), sizeof(CInst));
   }
   outfile.close();  
 }
 
 int32_t main(int32_t args, char* argv[])
 {
-  AppGenerator *app_gen = new AppGenerator("t.log");
-  app_gen->generate(15, 10000);
+  AppGenerator *app_gen = new AppGenerator("t.bin");
+  app_gen->generate(10, 200);
 }
 
 
