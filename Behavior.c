@@ -19,10 +19,16 @@ int32_t getSrf(int32_t reg)
   return srf[reg];
 }
 
+void test()
+{
+  srf[0] = srf[0] + srf[1];
+}
+
 void nop(int32_t d0, int32_t s0, int32_t s1)
 {
   srf[d0] = srf[s0] + srf[s1];
 }
+
 void add32(int32_t d0, int32_t s0, int32_t s1)
 {
   //srf[s0] = 10;
