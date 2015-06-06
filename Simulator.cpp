@@ -26,6 +26,7 @@
 #include <llvm/PassManager.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Scalar.h>
+#include <llvm/Support/ManagedStatic.h>
 //#include <llvm/DataLayout.h>     
 //#include <llvm/Target/TargetOptions.h>
 
@@ -49,6 +50,7 @@ class Simulator
 {
   public:
   Simulator();
+  ~Simulator() {delete EE; llvm::llvm_shutdown();}
   void LoadBinary(string filename);
   void Simulate();
 
@@ -75,9 +77,8 @@ Simulator::Simulator():
 {
   using namespace llvm;
   InitOperations();
-  //context = llvm::getGlobalContext();
-  SMDiagnostic error;
-  std::unique_ptr<Module> M = llvm::parseIRFile("Behavior.bc", error, context);
+  llvm::SMDiagnostic error;
+  std::unique_ptr<llvm::Module> M = llvm::parseIRFile("Behavior.bc", error, context);
   MyModule = M.get();
   string err_str;
 /*
@@ -106,21 +107,21 @@ Simulator::Simulator():
     for (int32_t i = 0; i < (int32_t)OPCODE::INVALID; i++) {
       OPCODE op = (OPCODE) i;
       llvm::Function *func = MyModule->getFunction(GetFuncName(op));
-      func->addFnAttr(Attribute::AlwaysInline);
+      func->addFnAttr(llvm::Attribute::AlwaysInline);
       OpFunctionMap[op] = func; 
     }
     test_type = MyModule->getFunction("test")->getFunctionType();
 
 
     passManager = new llvm::PassManager();
-    passManager->add(createAlwaysInlinerPass());
+    passManager->add(llvm::createAlwaysInlinerPass());
     fPassManager = new llvm::FunctionPassManager(MyModule);
     //fPassManager->add(new DataLayout(MyModule));
     //fPassManager->add(new DataLayout(*EE->getDataLayout()));
-    fPassManager->add(createGVNPass());
-    fPassManager->add(createInstructionCombiningPass());
-    fPassManager->add(createCFGSimplificationPass());
-    fPassManager->add(createDeadStoreEliminationPass());
+    fPassManager->add(llvm::createGVNPass());
+    fPassManager->add(llvm::createInstructionCombiningPass());
+    fPassManager->add(llvm::createCFGSimplificationPass());
+    fPassManager->add(llvm::createDeadStoreEliminationPass());
 
 
     llvm::InitializeNativeTarget();
@@ -130,8 +131,8 @@ Simulator::Simulator():
     llvm::EngineBuilder builder(std::move(M));
     //llvm::EngineBuilder builder(MyModule);
     builder.setErrorStr(&err_str);
-    builder.setEngineKind(EngineKind::JIT);
-    builder.setOptLevel(CodeGenOpt::Default); // None/Less/Default/Aggressive
+    builder.setEngineKind(llvm::EngineKind::JIT);
+    builder.setOptLevel(llvm::CodeGenOpt::Default); // None/Less/Default/Aggressive
     //TargetOptions options;
     //options.JITExceptionHandling = 1;
     //builder.setTargetOptions(options);
@@ -148,10 +149,13 @@ Simulator::Simulator():
     //string ErrStr;
     //EE = llvm::EngineBuilder(std::move(M)).setErrorStr(&ErrStr).setMCPU("i386").create();
     EE->DisableLazyCompilation(true);
+
+
 }
 
 void Simulator::Simulate()
 {
+  //context = llvm::getGlobalContext();
   int32_t index = 0;
   Blocks = new BasicBlock[1000];
   int32_t block_index = 0;
@@ -198,16 +202,17 @@ void Simulator::Simulate()
     IRB.CreateRetVoid();  
     passManager->run(*MyModule); 
     fPassManager->run(*func);
-    EE->finalizeObject();
-
-    Blocks[block_index].func_ptr = reinterpret_cast<HostFunction>(EE->getPointerToFunction(func));
-    std::cout << "calling " << f_name.str() << endl;
-    (Blocks[block_index].func_ptr)(); 
+    //EE->finalizeObject();
+    //std::vector<llvm::GenericValue> noargs;
+    //std::cout << "calling " << f_name.str() << endl;
+    //EE->runFunction(func, noargs);
+    Blocks[block_index].func_ptr = reinterpret_cast<decltype(HostFunction())>(EE->getPointerToFunction(func));
+    //(Blocks[block_index].func_ptr)(); 
     block_index++;
     //cout << "BlockIndex " << block_index << endl;
   }
   total_blocks = block_index;
-  //MyModule->dump();
+  MyModule->dump();
   struct timeval tp;
   gettimeofday(&tp, NULL);
   long int start = tp.tv_sec * 1000 + tp.tv_usec / 1000;
