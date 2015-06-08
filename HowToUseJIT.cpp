@@ -34,6 +34,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// g++ -O3 HowToUseJIT.cpp `llvm-config --cppflags --ldflags --libs` -std=c++11 -ldl -lpthread -o howtojit
+
 #include "llvm/ExecutionEngine/GenericValue.h"
 #include "llvm/ExecutionEngine/Interpreter.h"
 #include "llvm/ExecutionEngine/JIT.h"
@@ -60,6 +62,7 @@
 
 using namespace llvm;
 using namespace std;
+#define INST_COUNT 100000
 
 typedef void (*HostFunction)(int32_t *);
 int32_t srf[32];
@@ -83,6 +86,7 @@ llvm::FunctionPassManager *fPassManager;
 CInst *instructions;
 int32_t total_inst; 
 int32_t total_blocks;
+int32_t inst_per_block;
 std::map<OPCODE, llvm::Function*> OpFunctionMap;
 HostBlock *Blocks;
 
@@ -90,9 +94,9 @@ void LoadBinary(string filename)
 {
   ifstream infile;
   infile.open(filename.c_str(), ios::in|ios::binary); 
-  instructions = new CInst[100000];
+  instructions = new CInst[INST_COUNT];
   int32_t index = 0;
-  while (!infile.eof()) {
+  while (!infile.eof() && index < INST_COUNT) {
     infile.read ( (char *)&instructions[index], sizeof(CInst) );
     index++;
   }
@@ -124,7 +128,7 @@ void GenerateCode(llvm::LLVMContext &Context)
 
   llvm::IRBuilder<> IRB(Context);
 
-  while(index < 210) {
+  while(index < total_inst) {
 
     Blocks[block_index].pc = index;  
     ostringstream f_name;
@@ -144,7 +148,7 @@ void GenerateCode(llvm::LLVMContext &Context)
                                       MyModule);
 
     llvm::Function::arg_iterator arg0 = func->arg_begin();
-    arg0->setName("s");
+    arg0->setName("srf");
     srf_arg = arg0;
 //Function *F = Function::Create(FT, Function::ExternalLinkage, FnName, M);
     // Add a basic block to the function. As before, it automatically inserts
@@ -155,25 +159,25 @@ void GenerateCode(llvm::LLVMContext &Context)
     // automatically append instructions to the basic block `BB'.
     IRB.SetInsertPoint(BB);
     CInst *inst; 
-    int b_size = 0;
     do {
         AddCalls(index, IRB, Context);
+        //CInst *inst = &instructions[index];
         llvm::Function *Add1F = MyModule->getFunction("add1");
         Value *Ten = IRB.getInt32(10);
         IRB.CreateCall(Add1F, Ten);
         index++;
-        b_size++;
-    } while(b_size < 10  && index < total_inst);
-    IRB.CreateRetVoid();  
+    } while((instructions[index-1].opcode != JMP) && (index < total_inst));
+
+    IRB.CreateRetVoid();
     passManager->run(*MyModule); 
     fPassManager->run(*func);
     Blocks[block_index].func_ptr = (void *)(EE->getPointerToFunction(func));
     block_index++;
   }
-  EE->finalizeObject();
+  //EE->finalizeObject();
   total_blocks = block_index;
-  MyModule->dump();
-
+  //MyModule->dump();
+  inst_per_block = total_inst/total_blocks + 1;
 }
 
 void AddSample(LLVMContext &Context)
@@ -237,7 +241,7 @@ void AddSample(LLVMContext &Context)
   builder.CreateRet(Add1CallRes);
 }
 
-int main() {
+int main(int32_t args, char* argv[]) {
   
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
@@ -280,8 +284,8 @@ int main() {
   EE->DisableLazyCompilation(true);
 
   InitOperations();
-  EE->finalizeObject();
-    for (int32_t i = 0; i < (int32_t)OPCODE::INVALID; i++) {
+  //EE->finalizeObject();
+    for (int32_t i = 0; i < (int32_t)INVALID; i++) {
       OPCODE op = (OPCODE) i;
       llvm::Function *func = MyModule->getFunction(GetFuncName(op));
       func->addFnAttr(llvm::Attribute::AlwaysInline);
@@ -307,30 +311,36 @@ int main() {
   LoadBinary("t.bin");
   GenerateCode(Context);
 
-  //Function *func0 = M->getFunction("func0");
-  std::vector<GenericValue> noargsfunc;
-  //GenericValue gvfunc = EE->runFunction(func0, noargsfunc);
-  // Now we create the JIT.
-  //ExecutionEngine* EE = EngineBuilder(M).create();
+  int32_t run_count = 10000;
+  if (args > 1) run_count = atoi(argv[1]);
+  int32_t *block_count = new int32_t[total_blocks];
+  for (int32_t i = 0; i < total_blocks; i++) block_count[i] = 0;
   struct timeval tp;
   gettimeofday(&tp, NULL);
   long int start = tp.tv_sec * 1000 + tp.tv_usec / 1000;
-  for (int32_t j = 0; j < 10000; j++) {
+  for (int32_t j = 0; j < run_count; j++) {
  
-  for (int i = 0; i < 20; i++) {
-    ostringstream f_name;
-    f_name << "func";
-    f_name << i;
+  for (int i = 0; i < total_blocks; i++) {
+    //ostringstream f_name;
+    //f_name << "func";
+    //f_name << i;
     //Function *f0 = M->getFunction(f_name.str().c_str());
     //cout << "calling " << f_name.str() << endl;
     ((HostFunction)Blocks[i].func_ptr)(srf);
+    block_count[i]++;
     //GenericValue gvfunc = EE->runFunction(f0, noargsfunc);
   }
   }
   gettimeofday(&tp, NULL);
   long int end = tp.tv_sec * 1000 + tp.tv_usec / 1000;
   cout << "Time = " << end - start << endl; 
-
+  cout << "Total Runs = " << run_count << endl;
+  cout << "Total Blocks =  " << total_blocks << endl;
+  cout << "Inst per Block = " << inst_per_block << endl;
+  cout << "Total Instructions simulated = " << run_count * total_blocks * inst_per_block << endl;
+  cout << "Simulation Speed(MIPS) = " 
+        << double(run_count * total_blocks * inst_per_block)/(end-start)/1000
+        << endl;
   EE->freeMachineCodeForFunction(FooF);
   delete EE;
   llvm_shutdown();
