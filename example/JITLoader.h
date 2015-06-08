@@ -116,6 +116,7 @@ llvm::Module *load_module(string fileName, llvm::LLVMContext &Context)
     //GenericValue gv =  EE->runFunction(Try1, noargs);
     
     void (*try1)() = 
+  using namespace llvm;
       reinterpret_cast<void (*)()>(EE->getPointerToFunction(Try1));
     try1(); 
     delete EE;
